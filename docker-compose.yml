@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: aegis-postgres
+    environment:
+      POSTGRES_USER: aegis_admin
+      POSTGRES_PASSWORD: supersecretpassword
+      POSTGRES_DB: aegis_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aegis_admin -d aegis_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: aegis-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: aegis-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"   # AMQP protocol port
+      - "15672:15672" # Management UI port
+
+volumes:
+  pgdata:
+  redisdata:

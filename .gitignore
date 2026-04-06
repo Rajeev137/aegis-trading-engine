@@ -1,0 +1,16 @@
+#Node modules
+node_modules/
+dist/
+
+#python
+__pycache__/
+*.pyc
+venv/
+env/
+
+#env
+.env
+
+#os files
+.DS_Store
+EOF
