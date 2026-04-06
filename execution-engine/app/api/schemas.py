@@ -36,7 +36,6 @@ class TradeExecuteRequest(BaseModel):
     type: str # 'BUY' or 'SELL'
     pair: str # e.g., 'BTC-USD'
     amount: Decimal # Amount of the base asset (e.g., 0.5 BTC)
-    price: Decimal # Price per unit (e.g., 65000.00)
 
 class TransactionResponse(BaseModel):
     id: UUID

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from typing import List
+from decimal import Decimal
 
 from app.db.session import get_db
 from app.db.models import User, Portfolio, Transaction
@@ -53,13 +54,21 @@ async def execute_trade(
 ):
     # Enforce Rate Limit: 5 requests per 60 seconds
     await check_rate_limit(str(current_user.id), "execute", redis_client, limit=5, window=60)
-    
+
     # Basic validation
     if trade_in.type not in ['BUY', 'SELL']:
         raise HTTPException(status_code=400, detail="Invalid trade type. Must be BUY or SELL.")
         
     base_asset, quote_asset = trade_in.pair.split('-') # e.g., 'BTC' and 'USD'
-    total_cost = trade_in.amount * trade_in.price
+    # --- NEW SECURITY LAYER: Fetch price from Redis ---
+    live_price_str = await redis_client.get(f"orderbook:{trade_in.pair}:price")
+    if not live_price_str:
+        # Fallback for testing if you haven't set the price yet
+        live_price = Decimal('65000.00')
+    else:
+        live_price = Decimal(live_price_str)
+
+    total_cost = trade_in.amount * live_price # Use the server's price!
 
     try:
         # 1. Fetch relevant portfolio balances (USD and BTC)
@@ -97,7 +106,7 @@ async def execute_trade(
             type=trade_in.type,
             pair=trade_in.pair,
             amount=trade_in.amount,
-            price=trade_in.price,
+            price=live_price, # Record the price used for this trade
             status='COMPLETED'
         )
         db.add(transaction)
