@@ -33,6 +33,61 @@ services:
     ports:
       - "5672:5672"   # AMQP protocol port
       - "15672:15672" # Management UI port
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    
+    # 1. The FastAPI Web Server
+  api:
+    build: 
+      context: ./execution-engine
+      dockerfile: Dockerfile
+    container_name: aegis-api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=redis://redis:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - SECRET_KEY=${SECRET_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+
+  # 2. The Python Background Worker
+  worker:
+    build: 
+      context: ./execution-engine
+      dockerfile: Dockerfile
+    container_name: aegis-worker
+    # We override the default CMD to run the worker instead of the API
+    command: ["python", "-m", "app.worker"]
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+
+  # 3. The Node.js WebSocket Gateway
+  gateway:
+    build:
+      context: ./ingestion-gateway
+      dockerfile: Dockerfile
+    container_name: aegis-gateway
+    environment:
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
 
 volumes:
   pgdata:

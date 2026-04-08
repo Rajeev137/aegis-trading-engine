@@ -1,7 +1,10 @@
 import WebSocket from 'ws';
 import amqp from 'amqplib';
+import { config } from 'dotenv';
 
-const RABBITMQ_URL = 'amqp://guest:guest@localhost:5672'
+config();
+
+const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://guest:guest@rabbitmq:5672'
 // We will use Binance's public live trade stream for BTC/USDT
 const BINANCE_WS_URL = 'wss://stream.binance.com:9443/ws/btcusdt@trade';
 
