@@ -47,3 +47,30 @@ jobs:
         docker compose build api
         docker compose build gateway
         docker compose build worker
+
+  # --- CD PIPELINE ---
+  deploy-to-production:
+    # Only runs if build-and-test passes first
+    needs: build-and-test
+    # Only deploy on push to main, not on pull requests
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Deploy to AWS EC2
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USERNAME }}
+        key: ${{ secrets.EC2_SSH_KEY }}
+        script: |
+          cd aegis-trading-engine
+
+          # Pull the latest code from GitHub
+          git pull origin main
+
+          # Rebuild and restart only changed containers
+          docker compose up --build -d
+
+          # Clean up old dangling images to save disk space
+          docker image prune -f
