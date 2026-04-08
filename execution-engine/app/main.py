@@ -7,7 +7,7 @@ from app.api.market import router as market_router
 app = FastAPI(
     title = settings.PROJECT_NAME,
     description = "High-throughput Execution Engine API",
-    version = "1.0.0"
+    version = "1.1.0 - automated"
 )
 
 #mount the routers
