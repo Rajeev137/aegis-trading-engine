@@ -19,20 +19,8 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.alter_column(
-        "transactions",
-        "typre",
-        new_column_name="type",
-        existing_type=sa.String(length=10),
-        existing_nullable=False,
-    )
+    pass  # column already named 'type' from initial schema
 
 
 def downgrade() -> None:
-    op.alter_column(
-        "transactions",
-        "type",
-        new_column_name="typre",
-        existing_type=sa.String(length=10),
-        existing_nullable=False,
-    )
+    pass
