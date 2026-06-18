@@ -1,0 +1,9 @@
+# TODO: Define a Namespace called "aegis" to isolate all Aegis resources
+#       from other workloads on the cluster.
+#
+# TODO: Add label: app.kubernetes.io/part-of: aegis-trading
+#
+# TODO: Every other manifest in this k8s/ directory must include:
+#           namespace: aegis
+#       in its metadata section. Without this, kubectl apply -f k8s/ will
+#       land resources in the "default" namespace and they won't find each other.

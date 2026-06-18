@@ -1,0 +1,30 @@
+# TODO: OPTIONAL — Use this Ingress instead of LoadBalancer type on the aegis-api
+#       Service when you need TLS termination, host-based routing, or want to
+#       avoid provisioning a cloud load balancer for each service.
+#
+# TODO: Before applying this file, install an Ingress Controller:
+#   minikube:   minikube addons enable ingress
+#               (installs the nginx Ingress Controller)
+#   AWS EKS:    helm install aws-load-balancer-controller eks/aws-load-balancer-controller
+#
+# TODO: Create an Ingress named "aegis-ingress" in namespace "aegis".
+#   ingressClassName: nginx
+#
+# TODO: Rules:
+#   host: aegis.local   (for minikube; add to /etc/hosts pointing at minikube IP)
+#     To get minikube IP: minikube ip
+#     Add to /etc/hosts: <minikube-ip>  aegis.local
+#   http.paths:
+#     - path: /
+#       pathType: Prefix
+#       backend.service:
+#         name: aegis-api
+#         port.number: 80
+#
+# TODO: TLS (production only):
+#   Use cert-manager with a Let's Encrypt ClusterIssuer to auto-provision TLS.
+#   For minikube, generate a self-signed cert and reference it as a K8s Secret.
+#
+# TODO: If using Ingress, change the aegis-api Service type in service.yaml
+#       from LoadBalancer → ClusterIP. Ingress routes to a ClusterIP service;
+#       the LoadBalancer type on the Service would be redundant and wasteful.

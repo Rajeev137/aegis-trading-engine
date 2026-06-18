@@ -11,6 +11,7 @@ Built as a portfolio / interview demo to showcase async Python, message-driven a
 - [What it does](#what-it-does)
 - [Architecture](#architecture)
 - [Quick start (run the whole thing in one command)](#quick-start)
+- [Running on Kubernetes (minikube)](#running-on-kubernetes-minikube)
 - [Exploring the API (the "site")](#exploring-the-api)
 - [API reference](#api-reference)
 - [Environment variables](#environment-variables)
@@ -87,6 +88,103 @@ This is the Swagger UI — the easiest way to navigate and try every endpoint fr
 ```bash
 docker compose down          # stop containers
 docker compose down -v       # stop AND wipe the database/redis volumes
+```
+
+---
+
+## Running on Kubernetes (minikube)
+
+The `k8s/` directory contains manifest scaffolds for running the full stack on a local Kubernetes cluster. Each file is currently a stub with TODO comments — fill in the YAML before applying. The Docker Compose / EC2 deployment is unchanged.
+
+### Prerequisites
+
+- [minikube](https://minikube.sigs.k8s.io/docs/start/) v1.32+
+- [kubectl](https://kubernetes.io/docs/tasks/tools/) configured
+- Docker Desktop
+
+### 1. Start minikube and point Docker at it
+
+```bash
+minikube start --memory=4096 --cpus=4
+
+# Point your shell's Docker daemon at minikube's internal Docker daemon
+# so locally-built images are available without pushing to a registry:
+eval $(minikube docker-env)
+```
+
+### 2. Build images inside minikube
+
+```bash
+docker build -t aegis-execution-engine:latest ./execution-engine
+docker build -t aegis-ingestion-gateway:latest ./ingestion-gateway
+```
+
+> Set `imagePullPolicy: Never` in `deployment-api.yaml`, `deployment-engine.yaml`, and `deployment-gateway.yaml` when using locally-built images.
+
+### 3. Fill in secrets
+
+```bash
+# Base64-encode each value: echo -n "your-value" | base64
+# Edit k8s/secret.yaml with your encoded values, then:
+kubectl apply -f k8s/secret.yaml
+```
+
+### 4. Apply manifests in order
+
+```bash
+# Namespace must go first; everything else follows
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/secret.yaml
+kubectl apply -f k8s/statefulset-postgres.yaml
+kubectl apply -f k8s/deployment-redis.yaml
+kubectl apply -f k8s/deployment-rabbitmq.yaml
+kubectl apply -f k8s/service.yaml
+kubectl apply -f k8s/deployment-api.yaml
+kubectl apply -f k8s/deployment-engine.yaml
+kubectl apply -f k8s/deployment-gateway.yaml
+```
+
+### 5. Wait for pods to become ready
+
+```bash
+kubectl get pods -n aegis --watch
+```
+
+### 6. Run database migrations
+
+```bash
+# Find an API pod name:
+kubectl get pods -n aegis -l app=aegis-api
+
+# Exec into it and run Alembic:
+kubectl exec -n aegis <pod-name> -- alembic upgrade head
+```
+
+### 7. Access the API
+
+```bash
+# Run minikube tunnel in a separate terminal to bind the LoadBalancer IP:
+minikube tunnel
+
+# Get the external IP:
+kubectl get service aegis-api -n aegis
+
+# Open: http://<EXTERNAL-IP>/docs
+```
+
+### 8. Debug RabbitMQ (optional)
+
+```bash
+kubectl port-forward -n aegis service/aegis-rabbitmq 15672:15672
+# Open: http://localhost:15672
+```
+
+### 9. Tear down
+
+```bash
+kubectl delete namespace aegis   # removes all resources including PVCs
+minikube stop
 ```
 
 ---

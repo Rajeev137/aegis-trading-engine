@@ -1,0 +1,58 @@
+# TODO: This single file defines ALL Service resources for the cluster.
+#       Separate each Service with a "---" YAML document separator.
+#       All services belong to namespace "aegis".
+#
+# ─────────────────────────────────────────────────────────────────
+# TODO: Service 1 — aegis-postgres (ClusterIP)
+#   selector: app: aegis-postgres
+#   port: 5432 → targetPort: 5432
+#   type: ClusterIP
+#   This is the stable virtual IP used by DATABASE_URL in secret.yaml.
+#   The StatefulSet headless service (in statefulset-postgres.yaml) provides
+#   pod-level DNS on top of this for direct pod addressing if ever needed.
+#
+# ─────────────────────────────────────────────────────────────────
+# TODO: Service 2 — aegis-redis (ClusterIP)
+#   selector: app: aegis-redis
+#   port: 6379 → targetPort: 6379
+#   type: ClusterIP
+#   This is the stable DNS name used in REDIS_URL from configmap.yaml.
+#
+# ─────────────────────────────────────────────────────────────────
+# TODO: Service 3 — aegis-rabbitmq (ClusterIP)
+#   selector: app: aegis-rabbitmq
+#   ports:
+#     - name: amqp     port: 5672  → targetPort: 5672
+#     - name: mgmt-ui  port: 15672 → targetPort: 15672
+#   type: ClusterIP
+#   Both AMQP and management ports are exposed cluster-internally.
+#   To access the management UI from your local machine for debugging:
+#     kubectl port-forward -n aegis service/aegis-rabbitmq 15672:15672
+#     Then open: http://localhost:15672
+#   Do NOT expose 15672 as a LoadBalancer — it has no auth bypass protection.
+#
+# ─────────────────────────────────────────────────────────────────
+# TODO: Service 4 — aegis-api (LoadBalancer)
+#   selector: app: aegis-api
+#   port: 80 → targetPort: 8000
+#   type: LoadBalancer
+#   This is the only external-facing service. Clients hit port 80;
+#   traffic is forwarded to the FastAPI pods on port 8000.
+#
+#   On minikube: run "minikube tunnel" in a separate terminal to bind
+#   the LoadBalancer IP to localhost. Then get the IP with:
+#     kubectl get service aegis-api -n aegis
+#
+#   On AWS EKS: LoadBalancer type auto-provisions an AWS Network Load Balancer.
+#   For production, consider switching to ClusterIP + Ingress (see ingress.yaml)
+#   to enable TLS termination and path-based routing at lower cost.
+#
+# ─────────────────────────────────────────────────────────────────
+# TODO: No Service for aegis-worker
+#   The worker (deployment-engine.yaml) only connects OUTBOUND to RabbitMQ
+#   and Redis. It has no HTTP server and no inbound connections. A Service
+#   is unnecessary and would be a no-op.
+#
+# TODO: No Service for aegis-gateway
+#   The gateway (deployment-gateway.yaml) only connects OUTBOUND to RabbitMQ
+#   and the Binance WebSocket. No inbound connections. No Service needed.
