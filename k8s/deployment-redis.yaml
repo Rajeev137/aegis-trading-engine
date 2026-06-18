@@ -1,0 +1,46 @@
+# TODO: Create a Deployment named "aegis-redis" in namespace "aegis".
+#
+# TODO: Use Deployment (not StatefulSet) because:
+#   - Redis is used here as a cache + rate-limit counter, NOT as the primary datastore.
+#   - The worker writes live BTC price data continuously from RabbitMQ; if Redis loses
+#     its data on pod restart, the worker repopulates it within milliseconds.
+#   - No code addresses individual Redis pod names; ClusterIP DNS is sufficient.
+#   - Pod-level identity guarantees (stable hostname, ordered restart) are not needed.
+#
+# TODO: replicas: 1
+#
+# TODO: Container spec:
+#   image: redis:7-alpine   (matches docker-compose.yml exactly)
+#   containerPort: 6379
+#   command: ["redis-server", "--appendonly", "yes"]
+#     Enable AOF persistence so the mounted PVC is actually used. Without this flag,
+#     Redis ignores the volume and all data is in-memory only.
+#
+# TODO: VolumeMount:
+#   name: redisdata
+#   mountPath: /data
+#   (Redis writes both AOF and RDB snapshot files here.)
+#
+# TODO: Volume — reference a PersistentVolumeClaim named "aegis-redis-pvc".
+#       Define the PVC in this same file (separated by ---) or in a dedicated
+#       pvc-redis.yaml. Spec:
+#         accessModes: [ReadWriteOnce]
+#         resources.requests.storage: 1Gi
+#         storageClassName: standard   (minikube default; change for EKS)
+#
+# TODO: Liveness probe:
+#   exec command: ["redis-cli", "ping"]
+#   initialDelaySeconds: 15
+#   periodSeconds: 10
+#   failureThreshold: 3
+#   (redis-cli ping returns PONG if the server is alive and accepting commands.)
+#
+# TODO: Readiness probe:
+#   exec command: ["redis-cli", "ping"]
+#   initialDelaySeconds: 5
+#   periodSeconds: 5
+#   failureThreshold: 3
+#
+# TODO: resources:
+#   requests: cpu: 100m, memory: 128Mi
+#   limits:   cpu: 250m, memory: 256Mi

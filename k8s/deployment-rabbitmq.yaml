@@ -1,0 +1,51 @@
+# *** GAP NOTE ***
+# TODO: This file was NOT in the original scaffold spec but is required.
+#       The api, worker, and gateway ALL connect to RabbitMQ on startup.
+#       Without this Deployment, every application pod will crash-loop.
+#       Apply this manifest before deployment-api.yaml, deployment-engine.yaml,
+#       and deployment-gateway.yaml.
+#
+# TODO: Create a Deployment named "aegis-rabbitmq" in namespace "aegis".
+#
+# TODO: Use Deployment (not StatefulSet) because:
+#   - The fanout exchange "market-data" is declared non-durable
+#     (confirmed in ingestion-gateway/src/index.ts:
+#      assertExchange(exchange, 'fanout', { durable: false }))
+#   - The worker uses an exclusive, unnamed queue
+#     (confirmed in execution-engine/app/worker.py:
+#      declare_queue('', exclusive=True))
+#   - Neither exchange nor queue survives a broker restart by design.
+#     The gateway and worker reconnect and recreate them automatically
+#     (aio_pika connect_robust handles this).
+#   - No messages are persisted; losing buffered ticks during restart
+#     means at most 1-2 seconds of missed price data — acceptable.
+#
+# TODO: replicas: 1
+#
+# TODO: Container spec:
+#   image: rabbitmq:3-management-alpine   (matches docker-compose.yml; includes management plugin)
+#   ports:
+#     - containerPort: 5672    (AMQP protocol — used by api, worker, gateway)
+#     - containerPort: 15672   (Management HTTP API — for debugging only, not exposed externally)
+#
+# TODO: Environment variables (from Secret):
+#   RABBITMQ_DEFAULT_USER: valueFrom.secretKeyRef → aegis-secrets → RABBITMQ_DEFAULT_USER
+#   RABBITMQ_DEFAULT_PASS: valueFrom.secretKeyRef → aegis-secrets → RABBITMQ_DEFAULT_PASS
+#
+# TODO: Liveness probe:
+#   exec command: ["rabbitmq-diagnostics", "ping"]
+#   initialDelaySeconds: 30   (RabbitMQ init takes ~20-25s on cold start)
+#   periodSeconds: 10
+#   failureThreshold: 10
+#   (Mirrors the docker-compose healthcheck exactly.)
+#
+# TODO: Readiness probe:
+#   exec command: ["rabbitmq-diagnostics", "check_port_connectivity"]
+#   initialDelaySeconds: 20
+#   periodSeconds: 10
+#   failureThreshold: 5
+#   (Verifies the AMQP port is accepting connections before routing traffic.)
+#
+# TODO: resources:
+#   requests: cpu: 250m, memory: 256Mi
+#   limits:   cpu: 500m, memory: 512Mi

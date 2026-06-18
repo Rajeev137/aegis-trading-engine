@@ -1,0 +1,60 @@
+# TODO: Create a Deployment named "aegis-api" in namespace "aegis".
+#
+# TODO: replicas: 2
+#       Provides basic HA for the REST API. Both pods sit behind the
+#       aegis-api LoadBalancer Service and share traffic.
+#
+# TODO: Container spec:
+#   image: <your-registry>/aegis-execution-engine:latest
+#     Replace with your actual container registry path (ECR, GHCR, Docker Hub).
+#     For minikube local builds (no registry):
+#       1. eval $(minikube docker-env)
+#       2. docker build -t aegis-execution-engine:latest ./execution-engine
+#       3. Set imagePullPolicy: Never in this spec.
+#   containerPort: 8000
+#
+# TODO: Do NOT override command here. The Dockerfile CMD already runs uvicorn.
+#       Only deployment-engine.yaml (the worker) needs a command override.
+#
+# TODO: Environment variables — mix of ConfigMap and Secret references:
+#   From ConfigMap (aegis-config):
+#     REDIS_URL      → configMapKeyRef
+#     RABBITMQ_URL   → configMapKeyRef
+#   From Secret (aegis-secrets):
+#     DATABASE_URL   → secretKeyRef
+#     SECRET_KEY     → secretKeyRef
+#
+# TODO: Liveness probe:
+#   httpGet path: /health   port: 8000
+#   initialDelaySeconds: 15
+#   periodSeconds: 10
+#   failureThreshold: 3
+#   (The /health endpoint is defined in execution-engine/app/main.py and returns
+#    {"status": "Aegis execution engine is running"} with HTTP 200.)
+#
+# TODO: Readiness probe:
+#   httpGet path: /health   port: 8000
+#   initialDelaySeconds: 10
+#   periodSeconds: 5
+#   failureThreshold: 3
+#   (Readiness failure removes the pod from the Service load-balancer rotation
+#    without killing it — important during DB connection establishment on startup.)
+#
+# TODO: *** MIGRATION RACE CONDITION ***
+#       With 2 replicas, do NOT run "alembic upgrade head" as an initContainer.
+#       Both pods would race to apply migrations simultaneously, risking corruption.
+#       Instead, create a separate Kubernetes Job (migrations-job.yaml) that:
+#         - Uses the same execution-engine image
+#         - Runs: alembic upgrade head
+#         - Has restartPolicy: OnFailure
+#         - Is applied once before this Deployment with: kubectl apply -f k8s/migrations-job.yaml
+#       Then wait for the Job to complete before applying this Deployment.
+#
+# TODO: topologySpreadConstraints or podAntiAffinity:
+#       On a multi-node cluster, add a rule to prevent both API replicas from
+#       landing on the same node. On minikube (single-node) this has no effect
+#       but is good practice for production.
+#
+# TODO: resources:
+#   requests: cpu: 200m, memory: 256Mi
+#   limits:   cpu: 500m, memory: 512Mi
