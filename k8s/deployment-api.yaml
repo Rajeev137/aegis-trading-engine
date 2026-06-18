@@ -1,44 +1,66 @@
-# TODO: Create a Deployment named "aegis-api" in namespace "aegis".
-#
-# TODO: replicas: 2
-#       Provides basic HA for the REST API. Both pods sit behind the
-#       aegis-api LoadBalancer Service and share traffic.
-#
-# TODO: Container spec:
-#   image: <your-registry>/aegis-execution-engine:latest
-#     Replace with your actual container registry path (ECR, GHCR, Docker Hub).
-#     For minikube local builds (no registry):
-#       1. eval $(minikube docker-env)
-#       2. docker build -t aegis-execution-engine:latest ./execution-engine
-#       3. Set imagePullPolicy: Never in this spec.
-#   containerPort: 8000
-#
-# TODO: Do NOT override command here. The Dockerfile CMD already runs uvicorn.
-#       Only deployment-engine.yaml (the worker) needs a command override.
-#
-# TODO: Environment variables — mix of ConfigMap and Secret references:
-#   From ConfigMap (aegis-config):
-#     REDIS_URL      → configMapKeyRef
-#     RABBITMQ_URL   → configMapKeyRef
-#   From Secret (aegis-secrets):
-#     DATABASE_URL   → secretKeyRef
-#     SECRET_KEY     → secretKeyRef
-#
-# TODO: Liveness probe:
-#   httpGet path: /health   port: 8000
-#   initialDelaySeconds: 15
-#   periodSeconds: 10
-#   failureThreshold: 3
-#   (The /health endpoint is defined in execution-engine/app/main.py and returns
-#    {"status": "Aegis execution engine is running"} with HTTP 200.)
-#
-# TODO: Readiness probe:
-#   httpGet path: /health   port: 8000
-#   initialDelaySeconds: 10
-#   periodSeconds: 5
-#   failureThreshold: 3
-#   (Readiness failure removes the pod from the Service load-balancer rotation
-#    without killing it — important during DB connection establishment on startup.)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aegis-api
+  namespace: aegis
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: aegis-api
+  template:
+    metadata:
+      labels:
+        app: aegis-api
+    spec:
+      containers:
+        - name: api
+          image: aegis-execution-engine:latest
+          imagePullPolicy: Never        # minikube local build — no registry
+          ports:
+            - containerPort: 8000
+          env:
+            - name: REDIS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: aegis-config
+                  key: REDIS_URL
+            - name: RABBITMQ_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: aegis-config
+                  key: RABBITMQ_URL
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: DATABASE_URL
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: SECRET_KEY
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
 #
 # TODO: *** MIGRATION RACE CONDITION ***
 #       With 2 replicas, do NOT run "alembic upgrade head" as an initContainer.
@@ -54,7 +76,4 @@
 #       On a multi-node cluster, add a rule to prevent both API replicas from
 #       landing on the same node. On minikube (single-node) this has no effect
 #       but is good practice for production.
-#
-# TODO: resources:
-#   requests: cpu: 200m, memory: 256Mi
-#   limits:   cpu: 500m, memory: 512Mi
+
