@@ -1,51 +1,50 @@
-# TODO: Create a Deployment named "aegis-worker" in namespace "aegis".
-#       This is the background Python consumer (execution-engine/app/worker.py).
-#       It shares the same Docker image as deployment-api.yaml but overrides
-#       the startup command to run the worker instead of the API server.
-#
-# TODO: replicas: 1
-#       *** DO NOT scale this beyond 1 without modifying worker.py first. ***
-#       The worker declares an exclusive, unnamed AMQP queue (worker.py line ~28:
-#         declare_queue('', exclusive=True)
-#       Each replica gets its OWN exclusive queue bound to the fanout exchange,
-#       so every replica receives ALL price messages — scaling multiplies Redis
-#       writes, it does NOT distribute load. To enable horizontal scaling, change
-#       worker.py to use a shared, named, non-exclusive queue.
-#
-# TODO: Container spec:
-#   image: <your-registry>/aegis-execution-engine:latest
-#     Same image as deployment-api.yaml. For minikube: same local build process.
-#   command: ["python", "-m", "app.worker"]
-#     Overrides the Dockerfile CMD (which runs uvicorn). This is the only
-#     difference between the API and worker pods at the K8s level.
-#   No containerPort — the worker has no HTTP server.
-#
-# TODO: Environment variables — ConfigMap only (worker does not need DB or JWT):
-#   REDIS_URL:     configMapKeyRef → aegis-config
-#   RABBITMQ_URL:  configMapKeyRef → aegis-config
-#   (The worker only writes to Redis and reads from RabbitMQ.
-#    DATABASE_URL and SECRET_KEY are not needed here.)
-#
-# TODO: Liveness probe — NO httpGet possible (no HTTP server in the worker).
-#   Current best option (no code changes required):
-#     exec command: ["pgrep", "-f", "app.worker"]
-#     Verifies the Python process is still running. Does NOT confirm it is
-#     actively consuming messages — a deadlocked worker would pass this probe.
-#   initialDelaySeconds: 30   (give the worker time to connect to RabbitMQ)
-#   periodSeconds: 30
-#   failureThreshold: 3
-#
-#   *** BETTER OPTION (requires modifying worker.py): ***
-#     Add a line inside the message handler loop:
-#       open('/tmp/worker_alive', 'w').close()
-#     Then probe for that file's existence AND recency:
-#       exec command: ["find", "/tmp/worker_alive", "-newer", "/proc/1/cmdline"]
-#     This confirms the worker consumed a message recently, catching deadlocks.
-#
-# TODO: Readiness probe:
-#   Same exec as liveness. The worker has no network-facing readiness concept
-#   (it is the consumer, not a server), so readiness here primarily gates startup.
-#
-# TODO: resources:
-#   requests: cpu: 100m, memory: 128Mi
-#   limits:   cpu: 250m, memory: 256Mi
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aegis-worker
+  namespace: aegis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aegis-worker
+  template:
+    metadata:
+      labels:
+        app: aegis-worker
+    spec:
+      containers:
+        - name: worker
+          image: aegis-execution-engine:latest
+          imagePullPolicy: Never        # minikube local build — no registry
+          command: ["python", "-m", "app.worker"]
+          env:
+            - name: REDIS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: aegis-config
+                  key: REDIS_URL
+            - name: RABBITMQ_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: aegis-config
+                  key: RABBITMQ_URL
+          livenessProbe:
+            exec:
+              command: ["find", "/tmp/worker_alive", "-newer", "/proc/1/cmdline"]              #     This confirms the worker consumed a message recently, catching deadlocks.
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: ["find", "/tmp/worker_alive", "-newer", "/proc/1/cmdline"]              #     This confirms the worker consumed a message recently, catching deadlocks.
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
