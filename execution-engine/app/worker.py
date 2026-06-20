@@ -43,6 +43,10 @@ async def main():
                     #update redis instantly
                     await redis_client.set(f"orderbook:{pair}:price", price)
 
+                    # touch heartbeat file so the K8s liveness probe can verify
+                    # the worker consumed a message recently (not just that the process exists)
+                    open('/tmp/worker_alive', 'w').close()
+
                     #log every 50th message to avoid spamming logs
                     count += 1
                     if count % 50 == 0:
