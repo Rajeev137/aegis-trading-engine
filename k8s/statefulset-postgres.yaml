@@ -1,64 +1,83 @@
-# TODO: Create a StatefulSet named "aegis-postgres" in namespace "aegis".
-#
-# TODO: Use StatefulSet (not Deployment) for three reasons specific to this project:
-#   1. Stable DNS identity — DATABASE_URL points to "aegis-postgres"; the StatefulSet
-#      headless service gives pod-level DNS (aegis-postgres-0.aegis-postgres-headless)
-#      which survives pod restarts without changing the address.
-#   2. Dedicated PVC per pod — volumeClaimTemplates binds one PVC permanently to pod-0,
-#      surviving deletion and rescheduling. A Deployment PVC would allow two pods to
-#      attempt mounting the same ReadWriteOnce volume, causing one to fail.
-#   3. Ordered shutdown — StatefulSet terminates pods in reverse-ordinal order,
-#      ensuring a clean Postgres shutdown before any failover logic could run.
-#
-# TODO: replicas: 1
-#       Single primary only. Postgres HA (streaming replication, Patroni, etc.)
-#       is out of scope for this scaffold.
-#
-# TODO: Container spec:
-#   image: postgres:15-alpine       (matches docker-compose.yml exactly)
-#   containerPort: 5432
-#
-# TODO: Environment variables (mix of ConfigMap and Secret references):
-#   POSTGRES_USER:     valueFrom.configMapKeyRef  → aegis-config → POSTGRES_USER
-#   POSTGRES_DB:       valueFrom.configMapKeyRef  → aegis-config → POSTGRES_DB
-#   POSTGRES_PASSWORD: valueFrom.secretKeyRef     → aegis-secrets → POSTGRES_PASSWORD
-#
-# TODO: VolumeMount:
-#   name: pgdata
-#   mountPath: /var/lib/postgresql/data
-#   subPath: postgres
-#     ^^^ Required: Postgres refuses to initialise if its data directory contains
-#     a lost+found dir, which raw PV mounts often create. subPath avoids this.
-#
-# TODO: volumeClaimTemplates (one entry):
-#   name: pgdata
-#   accessModes: [ReadWriteOnce]
-#   resources.requests.storage: 5Gi
-#   storageClassName: standard
-#     ^^^ "standard" is the default StorageClass on minikube.
-#     On AWS EKS, change to "gp2" or "gp3".
-#
-# TODO: Liveness probe:
-#   exec command: ["pg_isready", "-U", "aegis_admin", "-d", "aegis_db"]
-#   initialDelaySeconds: 30   (Postgres init on first boot can take 10-20s)
-#   periodSeconds: 10
-#   failureThreshold: 5
-#   (Mirrors the docker-compose healthcheck exactly.)
-#
-# TODO: Readiness probe:
-#   exec command: ["pg_isready", "-U", "aegis_admin", "-d", "aegis_db"]
-#   initialDelaySeconds: 10
-#   periodSeconds: 5
-#   failureThreshold: 3
-#   (Readiness failing removes this pod from the Service endpoints without
-#    restarting it — important during the initial data directory setup.)
-#
-# TODO: Also create a headless Service named "aegis-postgres-headless" in this file
-#       (separated by ---). The StatefulSet's serviceName field must reference it.
-#       The headless service (clusterIP: None) enables pod-level DNS resolution.
-#       The normal ClusterIP service in service.yaml provides the stable virtual IP
-#       used by DATABASE_URL.
-#
-# TODO: resources:
-#   requests: cpu: 250m, memory: 256Mi
-#   limits:   cpu: 500m, memory: 512Mi
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: aegis-postgres
+  namespace: aegis
+spec:
+  serviceName: aegis-postgres-headless
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aegis-postgres
+  template:
+    metadata:
+      labels:
+        app: aegis-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: aegis-config
+                  key: POSTGRES_USER
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: aegis-config
+                  key: POSTGRES_DB
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+              subPath: postgres
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "aegis_admin", "-d", "aegis_db"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 5
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "aegis_admin", "-d", "aegis_db"]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+  volumeClaimTemplates:
+    - metadata:
+        name: pgdata
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 5Gi
+        storageClassName: standard
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aegis-postgres-headless
+  namespace: aegis
+spec:
+  clusterIP: None
+  selector:
+    app: aegis-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432

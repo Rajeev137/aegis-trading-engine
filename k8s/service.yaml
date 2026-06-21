@@ -56,3 +56,58 @@
 # TODO: No Service for aegis-gateway
 #   The gateway (deployment-gateway.yaml) only connects OUTBOUND to RabbitMQ
 #   and the Binance WebSocket. No inbound connections. No Service needed.
+apiVersion: v1
+kind: Service
+metadata:
+  name: aegis-postgres
+  namespace: aegis
+spec:
+  type: ClusterIP
+  selector:
+    app: aegis-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aegis-redis
+  namespace: aegis
+spec:
+  type: ClusterIP
+  selector:
+    app: aegis-redis
+  ports:
+    - port: 6379
+      targetPort: 6379
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aegis-rabbitmq
+  namespace: aegis
+spec:
+  type: ClusterIP
+  selector:
+    app: aegis-rabbitmq
+  ports:
+    - name: amqp
+      port: 5672
+      targetPort: 5672
+    - name: mgmt-ui
+      port: 15672
+      targetPort: 15672
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aegis-api
+  namespace: aegis
+spec:
+  type: LoadBalancer
+  selector:
+    app: aegis-api
+  ports:
+    - port: 80
+      targetPort: 8000

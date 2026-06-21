@@ -61,17 +61,6 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
-#
-# TODO: *** MIGRATION RACE CONDITION ***
-#       With 2 replicas, do NOT run "alembic upgrade head" as an initContainer.
-#       Both pods would race to apply migrations simultaneously, risking corruption.
-#       Instead, create a separate Kubernetes Job (migrations-job.yaml) that:
-#         - Uses the same execution-engine image
-#         - Runs: alembic upgrade head
-#         - Has restartPolicy: OnFailure
-#         - Is applied once before this Deployment with: kubectl apply -f k8s/migrations-job.yaml
-#       Then wait for the Job to complete before applying this Deployment.
-#
 # TODO: topologySpreadConstraints or podAntiAffinity:
 #       On a multi-node cluster, add a rule to prevent both API replicas from
 #       landing on the same node. On minikube (single-node) this has no effect

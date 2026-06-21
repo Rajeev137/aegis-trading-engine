@@ -84,6 +84,100 @@ npm start        # run compiled dist/index.js
 - Connects to Binance `btcusdt@trade` stream, extracts `trade.p` (price), publishes `{ pair: 'BTC-USD', price }` JSON to RabbitMQ fanout exchange `market-data`
 - Currently hardcoded to BTC/USD only
 
+## Kubernetes (k8s/) — Implementation Status
+
+All manifests live in `k8s/`. The branch `feat/k8s-implementation` is active.
+Apply order matters: namespace → configmap/secret → infra (postgres, redis, rabbitmq) → app (api, worker, gateway) → service → ingress.
+
+### Done
+| File | Resource | Notes |
+|---|---|---|
+| `deployment-api.yaml` | Deployment `aegis-api` | 2 replicas, httpGet `/health` probes, env from ConfigMap + Secret |
+| `deployment-engine.yaml` | Deployment `aegis-worker` | 1 replica (exclusive AMQP queue — do not scale without changing worker.py), `command: ["python", "-m", "app.worker"]` overrides Dockerfile CMD, exec probe uses `find /tmp/worker_alive -newer /proc/1/cmdline` (worker.py touches file on every consumed message) |
+| `deployment-redis.yaml` | Deployment `aegis-redis` + PVC | redis:7-alpine, AOF persistence (`--appendonly yes`), 1Gi PVC `aegis-redis-pvc`, `redis-cli ping` probes |
+| `configmap.yaml` | ✅ Now includes `PAIRS` | `BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,DOGEUSDT` — controls which Binance streams gateway subscribes to |
+
+### All K8s files complete — verified working on minikube
+
+All 12 manifests are implemented and the full stack has been verified running locally.
+Every pod reached `1/1 Running`. `GET /health` returned `{"status": "Aegis execution engine is running"}`.
+
+| File | Status | Notes |
+|---|---|---|
+| `namespace.yaml` | ✅ Done | Namespace `aegis`, label `app.kubernetes.io/part-of: aegis-trading` |
+| `configmap.yaml` | ✅ Done | `REDIS_URL`, `RABBITMQ_URL`, `POSTGRES_DB`, `POSTGRES_USER` with K8s service hostnames |
+| `secret.yaml` | ✅ Done (template) | `stringData` with `REPLACE_ME` placeholders. Gitignored once filled. |
+| `statefulset-postgres.yaml` | ✅ Done | StatefulSet + headless Service + 5Gi PVC via `volumeClaimTemplates`, `subPath: postgres` |
+| `deployment-redis.yaml` | ✅ Done | Deployment + 1Gi PVC, AOF persistence, `redis-cli ping` probes |
+| `deployment-rabbitmq.yaml` | ✅ Done | Deployment, `rabbitmq-diagnostics` probes, credentials from Secret |
+| `deployment-api.yaml` | ✅ Done | 2 replicas, httpGet `/health`, env from ConfigMap + Secret |
+| `deployment-engine.yaml` | ✅ Done | 1 replica, `find /tmp/worker_alive` probe, heartbeat in worker.py |
+| `deployment-gateway.yaml` | ✅ Done | 1 replica, httpGet port 3000 (health server added to index.ts) |
+| `migrations-job.yaml` | ✅ Done | One-shot Job, `restartPolicy: OnFailure`, `backoffLimit: 4` |
+| `service.yaml` | ✅ Done | ClusterIP for infra, LoadBalancer for API (port 80 → 8000) |
+| `ingress.yaml` | ✅ Done | Optional nginx Ingress to `aegis.local`, alternative to LoadBalancer |
+
+### Verified apply order (minikube)
+```bash
+minikube start --memory=4096 --cpus=2
+eval $(minikube docker-env)
+docker build -t aegis-execution-engine:latest ./execution-engine
+docker build -t aegis-ingestion-gateway:latest ./ingestion-gateway
+
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/secret.yaml
+kubectl apply -f k8s/statefulset-postgres.yaml
+kubectl apply -f k8s/service.yaml
+kubectl wait --for=condition=ready pod/aegis-postgres-0 -n aegis --timeout=90s
+kubectl apply -f k8s/migrations-job.yaml
+kubectl wait --for=condition=complete job/aegis-migrations -n aegis --timeout=60s
+kubectl apply -f k8s/deployment-redis.yaml
+kubectl apply -f k8s/deployment-rabbitmq.yaml
+kubectl apply -f k8s/deployment-api.yaml
+kubectl apply -f k8s/deployment-engine.yaml
+kubectl apply -f k8s/deployment-gateway.yaml
+
+# In a second terminal:
+minikube tunnel
+# Then: kubectl get service aegis-api -n aegis → copy EXTERNAL-IP
+# curl http://<EXTERNAL-IP>/health
+
+# Teardown (preserve state):
+minikube stop
+# Teardown (full wipe):
+kubectl delete namespace aegis && minikube stop
+```
+
+### Known startup behaviour
+Worker and gateway restart 2–5 times on cold start — RabbitMQ takes ~25s to boot and they crash-loop until it is ready. This self-heals automatically via K8s backoff. `aegis-migrations` showing `Completed` is correct (Job, not a crash).
+
+## Multi-pair trading (implemented)
+
+Gateway now streams multiple Binance pairs via a single combined WebSocket connection.
+Controlled by the `PAIRS` env var — no code changes needed to add new pairs.
+
+### How it works
+- `PAIRS=BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,DOGEUSDT` (set in `.env`, docker-compose, and `k8s/configmap.yaml`)
+- Gateway builds Binance combined stream URL: `wss://stream.binance.com:9443/stream?streams=btcusdt@trade/ethusdt@trade/...`
+- `symbolToPair()` in `index.ts` strips `USDT`/`BUSD`/`USD` suffix → `BTCUSDT` → `BTC-USD`
+- Worker writes each pair's price to its own Redis key: `orderbook:BTC-USD:price`, `orderbook:ETH-USD:price`, etc.
+- `POST /trading/execute` accepts any `pair` string — returns `503` if no live price exists for it (instead of the old silent `$65,000` fallback)
+
+### To add a new pair
+Add its Binance symbol to `PAIRS` in `.env` and restart the gateway. No code changes.
+
+### Pairs that work out of the box
+`BTC-USD`, `ETH-USD`, `SOL-USD`, `BNB-USD`, `DOGE-USD`
+
+### Next feature — limit orders (`feat/limit-orders` branch)
+`locked_balance` column exists on `portfolios` table (never written to yet).
+It is reserved for limit order implementation:
+- User places limit order → funds move `balance → locked_balance` (reserved, unavailable for other trades)
+- Background poller checks Redis price → when price hits target → funds move `locked_balance → 0`, asset credited
+- On cancel → `locked_balance → balance` (released)
+Needs: `LimitOrder` table + migration, `POST /trading/limit-order`, `DELETE /trading/limit-order/{id}`, background polling task.
+
 ## CI/CD
 
 GitHub Actions (`.github/workflows/ci.yml`) on push/PR to `main`:
