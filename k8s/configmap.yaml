@@ -1,23 +1,11 @@
-# TODO: Create a ConfigMap named "aegis-config" in namespace "aegis".
-#
-# TODO: Non-secret environment variables to include as key/value pairs:
-#   REDIS_URL:     redis://aegis-redis:6379/0
-#   RABBITMQ_URL:  amqp://aegis-rabbitmq:5672/
-#   POSTGRES_DB:   aegis_db
-#   POSTGRES_USER: aegis_admin
-#
-# TODO: Service hostnames differ from docker-compose names.
-#       In K8s, each service gets a DNS name equal to the Service resource name
-#       defined in service.yaml. The mapping is:
-#         docker-compose "redis"     → K8s ClusterIP "aegis-redis"
-#         docker-compose "rabbitmq"  → K8s ClusterIP "aegis-rabbitmq"
-#         docker-compose "postgres"  → K8s ClusterIP "aegis-postgres"
-#       All env URLs in this ConfigMap must use the K8s service names.
-#
-# TODO: Do NOT include DATABASE_URL here — it contains the Postgres password
-#       and belongs in secret.yaml (secretKeyRef).
-#
-# TODO: RABBITMQ_URL here intentionally omits credentials (just the host/port).
-#       The RabbitMQ pod itself uses RABBITMQ_DEFAULT_USER/PASS from the Secret.
-#       If the application connects with credentials baked into the URL, move
-#       RABBITMQ_URL to secret.yaml and reference it via secretKeyRef instead.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aegis-config
+  namespace: aegis
+data:
+  REDIS_URL: "redis://aegis-redis:6379/0"
+  RABBITMQ_URL: "amqp://guest:guest@aegis-rabbitmq:5672/"
+  POSTGRES_DB: "aegis_db"
+  POSTGRES_USER: "aegis_admin"
+  PAIRS: "BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,DOGEUSDT"

@@ -12,6 +12,8 @@ env/
 *.env
 .env
 
+#k8s secrets with real values — template (REPLACE_ME) is safe to commit, filled version is not
+k8s/secret.yaml
+
 #os files
 .DS_Store
-EOF

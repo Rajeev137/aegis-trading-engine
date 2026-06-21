@@ -59,14 +59,18 @@ async def execute_trade(
     if trade_in.type not in ['BUY', 'SELL']:
         raise HTTPException(status_code=400, detail="Invalid trade type. Must be BUY or SELL.")
         
-    base_asset, quote_asset = trade_in.pair.split('-') # e.g., 'BTC' and 'USD'
-    # --- NEW SECURITY LAYER: Fetch price from Redis ---
+    if '-' not in trade_in.pair:
+        raise HTTPException(status_code=400, detail="Invalid pair format. Use BASE-QUOTE, e.g. BTC-USD.")
+    base_asset, quote_asset = trade_in.pair.split('-', 1)
+
     live_price_str = await redis_client.get(f"orderbook:{trade_in.pair}:price")
     if not live_price_str:
-        # Fallback for testing if you haven't set the price yet
-        live_price = Decimal('65000.00')
-    else:
-        live_price = Decimal(live_price_str)
+        raise HTTPException(
+            status_code=503,
+            detail=f"No live price available for {trade_in.pair}. "
+                   "Ensure the ingestion gateway is subscribed to this pair (check PAIRS env var)."
+        )
+    live_price = Decimal(live_price_str)
 
     total_cost = trade_in.amount * live_price # Use the server's price!
 

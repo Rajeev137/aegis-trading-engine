@@ -1,53 +1,53 @@
-# TODO: Create a Deployment named "aegis-gateway" in namespace "aegis".
-#       This is the Node.js ingestion gateway (ingestion-gateway/src/index.ts)
-#       that streams live BTC prices from Binance WebSocket and publishes
-#       them to the RabbitMQ fanout exchange "market-data".
-#
-# TODO: replicas: 1
-#       *** DO NOT scale this beyond 1 without understanding the side effects. ***
-#       The gateway connects directly to the Binance WebSocket stream.
-#       Multiple replicas = multiple identical connections to Binance = duplicate
-#       price messages published to RabbitMQ. The worker handles duplicates
-#       gracefully (Redis SET is idempotent), but duplicate messages waste
-#       RabbitMQ bandwidth proportionally to replica count.
-#
-# TODO: Container spec:
-#   image: <your-registry>/aegis-ingestion-gateway:latest
-#     For minikube local builds (no registry):
-#       1. eval $(minikube docker-env)
-#       2. docker build -t aegis-ingestion-gateway:latest ./ingestion-gateway
-#       3. Set imagePullPolicy: Never in this spec.
-#   No containerPort — the gateway has no HTTP server; it only connects outbound
-#   to Binance (wss://stream.binance.com:9443) and RabbitMQ.
-#
-# TODO: Environment variables — ConfigMap only:
-#   RABBITMQ_URL:  configMapKeyRef → aegis-config
-#
-# TODO: Liveness probe — NO httpGet possible (no HTTP server in index.ts).
-#   Current best option (no code changes required):
-#     exec command: ["node", "-e", "process.exit(0)"]
-#     This is a minimal viability check — it confirms the Node.js runtime
-#     is alive but does NOT verify the Binance WebSocket or RabbitMQ
-#     connection is healthy. A gateway with a dropped WS connection would
-#     silently pass this probe.
-#   initialDelaySeconds: 20
-#   periodSeconds: 30
-#   failureThreshold: 3
-#
-#   *** BETTER OPTION (requires modifying ingestion-gateway/src/index.ts): ***
-#     Add a minimal HTTP health server alongside the WebSocket logic:
-#       import http from 'http';
-#       http.createServer((_, res) => res.end('ok')).listen(3000);
-#     Then probe: httpGet path: /  port: 3000
-#     This confirms the process is running AND the event loop is not blocked.
-#     Set the health flag to false when WS or AMQP disconnects and true on reconnect
-#     for a proper readiness signal.
-#
-# TODO: Readiness probe:
-#   Same exec as liveness. No inbound traffic is routed to the gateway, so
-#   readiness is mainly used as a startup gate (prevent it from being considered
-#   "ready" before RabbitMQ connection is established).
-#
-# TODO: resources:
-#   requests: cpu: 50m,  memory: 64Mi
-#   limits:   cpu: 200m, memory: 128Mi
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aegis-gateway
+  namespace: aegis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aegis-gateway
+  template:
+    metadata:
+      labels:
+        app: aegis-gateway
+    spec:
+      containers:
+        - name: gateway
+          image: aegis-ingestion-gateway:latest
+          imagePullPolicy: Never
+          env:
+            - name: RABBITMQ_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: aegis-config
+                  key: RABBITMQ_URL
+            - name: PAIRS
+              valueFrom:
+                configMapKeyRef:
+                  name: aegis-config
+                  key: PAIRS
+          ports:
+            - containerPort: 3000
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 20
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 20
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
