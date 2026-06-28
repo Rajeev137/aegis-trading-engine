@@ -75,7 +75,7 @@ async def execute_trade(
     total_cost = trade_in.amount * live_price # Use the server's price!
 
     try:
-        # 1. Fetch relevant portfolio balances (USD and BTC)
+        # 1. Fetch relevant portfolio balances
         portfolios_query = select(Portfolio).where(Portfolio.user_id == current_user.id)
         result = await db.execute(portfolios_query)
         portfolios = {p.asset_symbol: p for p in result.scalars().all()}
