@@ -17,3 +17,6 @@ k8s/secret.yaml
 
 #os files
 .DS_Store
+
+#personal study plan — not for the repo
+tasks.md
