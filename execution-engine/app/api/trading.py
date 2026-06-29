@@ -70,12 +70,12 @@ async def execute_trade(
             detail=f"No live price available for {trade_in.pair}. "
                    "Ensure the ingestion gateway is subscribed to this pair (check PAIRS env var)."
         )
-    live_price = Decimal(live_price_str)
+    live_price = Decimal(live_price_str.decode())
 
     total_cost = trade_in.amount * live_price # Use the server's price!
 
     try:
-        # 1. Fetch relevant portfolio balances (USD and BTC)
+        # 1. Fetch relevant portfolio balances
         portfolios_query = select(Portfolio).where(Portfolio.user_id == current_user.id)
         result = await db.execute(portfolios_query)
         portfolios = {p.asset_symbol: p for p in result.scalars().all()}
