@@ -23,7 +23,8 @@ from alembic import context
 config = context.config
 
 # Overwrite the ini-file sqlalchemy.url path with our env variable
-config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"])
+db_url = config.get_main_option("sqlalchemy.url") or os.environ["DATABASE_URL"]
+config.set_main_option("sqlalchemy.url", db_url)
 
 # --- Update target_metadata ---
 # Change target_metadata = None to:
